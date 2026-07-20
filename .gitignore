@@ -1,0 +1,25 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+
+## IDE
+.idea/
+*.swp
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Local data
+*.db
+*.db-shm
+*.db-wal
+data/
+
+## Env
+.env
+.env.local
