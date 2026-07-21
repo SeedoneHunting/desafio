@@ -14,11 +14,11 @@ TestResults/
 .DS_Store
 Thumbs.db
 
-## Local data
+## Local sqlite runtime
+/data/
 *.db
 *.db-shm
 *.db-wal
-data/
 
 ## Env
 .env
