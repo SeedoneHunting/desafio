@@ -1,61 +1,85 @@
+using System.Text.Json;
 using Cashflow.Contracts;
 using Consolidado.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 
 namespace Consolidado.Api.Services;
 
 public sealed class BalanceProjectionService(
     ConsolidadoDbContext db,
-    IMemoryCache cache)
+    IMemoryCache cache,
+    ILogger<BalanceProjectionService> logger)
 {
     private static string CacheKey(DateOnly date) => $"balance:{date:yyyy-MM-dd}";
 
     public async Task ProcessEventAsync(EntryCreatedEvent domainEvent, CancellationToken ct)
     {
-        var alreadyProcessed = await db.ProcessedEvents
-            .AnyAsync(e => e.EventId == domainEvent.EventId, ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        if (alreadyProcessed)
-            return;
-
-        var balance = await db.DailyBalances
-            .FirstOrDefaultAsync(b => b.Date == domainEvent.Date, ct);
-
-        if (balance is null)
+        try
         {
-            balance = new DailyBalanceEntity
+            var alreadyProcessed = await db.ProcessedEvents
+                .AnyAsync(e => e.EventId == domainEvent.EventId, ct);
+
+            if (alreadyProcessed)
             {
-                Date = domainEvent.Date,
-                TotalCredits = 0,
-                TotalDebits = 0,
-                Balance = 0,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-            db.DailyBalances.Add(balance);
+                logger.LogInformation(
+                    "Event {EventId} already processed — skipping.",
+                    domainEvent.EventId);
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            var balance = await db.DailyBalances
+                .FirstOrDefaultAsync(b => b.Date == domainEvent.Date, ct);
+
+            if (balance is null)
+            {
+                balance = new DailyBalanceEntity
+                {
+                    Date = domainEvent.Date,
+                    TotalCredits = 0,
+                    TotalDebits = 0,
+                    Balance = 0,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                };
+                db.DailyBalances.Add(balance);
+            }
+
+            if (domainEvent.Type == EntryType.Credit)
+            {
+                balance.TotalCredits += domainEvent.Amount;
+                balance.Balance += domainEvent.Amount;
+            }
+            else
+            {
+                balance.TotalDebits += domainEvent.Amount;
+                balance.Balance -= domainEvent.Amount;
+            }
+
+            balance.UpdatedAt = DateTimeOffset.UtcNow;
+
+            db.ProcessedEvents.Add(new ProcessedEventEntity
+            {
+                EventId = domainEvent.EventId,
+                ProcessedAt = DateTimeOffset.UtcNow
+            });
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            cache.Remove(CacheKey(domainEvent.Date));
         }
-
-        if (domainEvent.Type == EntryType.Credit)
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
-            balance.TotalCredits += domainEvent.Amount;
-            balance.Balance += domainEvent.Amount;
+            await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            logger.LogInformation(
+                ex,
+                "Event {EventId} already processed (unique constraint) — skipping.",
+                domainEvent.EventId);
         }
-        else
-        {
-            balance.TotalDebits += domainEvent.Amount;
-            balance.Balance -= domainEvent.Amount;
-        }
-
-        balance.UpdatedAt = DateTimeOffset.UtcNow;
-
-        db.ProcessedEvents.Add(new ProcessedEventEntity
-        {
-            EventId = domainEvent.EventId,
-            ProcessedAt = DateTimeOffset.UtcNow
-        });
-
-        await db.SaveChangesAsync(ct);
-        cache.Remove(CacheKey(domainEvent.Date));
     }
 
     public async Task<DailyBalanceResponse?> GetByDateAsync(DateOnly date, CancellationToken ct)
@@ -92,12 +116,24 @@ public sealed class BalanceProjectionService(
         if (endDate is not null)
             query = query.Where(b => b.Date <= endDate);
 
-        var items = await query.OrderBy(b => b.Date).ToListAsync(ct);
+        var items = await query.ToListAsync(ct);
 
-        return items.Select(b => new DailyBalanceResponse(
-            b.Date,
-            b.TotalCredits,
-            b.TotalDebits,
-            b.Balance)).ToList();
+        return items
+            .OrderBy(b => b.Date)
+            .Select(b => new DailyBalanceResponse(
+                b.Date,
+                b.TotalCredits,
+                b.TotalDebits,
+                b.Balance))
+            .ToList();
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex)
+    {
+        var message = ex.InnerException?.Message ?? ex.Message;
+        return message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unique", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("23505", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase);
     }
 }

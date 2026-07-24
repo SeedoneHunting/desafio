@@ -5,11 +5,13 @@ Write-Host "=== Demo Fluxo de Caixa ===" -ForegroundColor Cyan
 
 Write-Host "`n[1] Registrar credito R$ 100,00" -ForegroundColor Yellow
 Invoke-RestMethod -Method Post -Uri "http://localhost:5001/entries" -ContentType "application/json" -Body (@{
+    externalId = [guid]::NewGuid().ToString()
     type = "Credit"; amount = 100.00; date = $date; description = "Venda no caixa"
 } | ConvertTo-Json) | ConvertTo-Json
 
 Write-Host "`n[2] Registrar debito R$ 25,50" -ForegroundColor Yellow
 Invoke-RestMethod -Method Post -Uri "http://localhost:5001/entries" -ContentType "application/json" -Body (@{
+    externalId = [guid]::NewGuid().ToString()
     type = "Debit"; amount = 25.50; date = $date; description = "Pagamento fornecedor"
 } | ConvertTo-Json) | ConvertTo-Json
 

@@ -3,6 +3,7 @@ namespace Lancamentos.Api.Data;
 public sealed class EntryEntity
 {
     public Guid Id { get; set; }
+    public Guid ExternalId { get; set; }
     public int Type { get; set; }
     public decimal Amount { get; set; }
     public DateOnly Date { get; set; }

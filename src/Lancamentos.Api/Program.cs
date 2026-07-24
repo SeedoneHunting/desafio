@@ -1,9 +1,12 @@
 ﻿using Cashflow.Contracts;
 using Lancamentos.Api.Data;
+using Lancamentos.Api.Health;
 using Lancamentos.Api.Messaging;
 using Lancamentos.Api.Middleware;
 using Lancamentos.Api.Services;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 using System.Text.Json.Serialization;
 
@@ -33,11 +36,19 @@ builder.Services.AddDbContext<LancamentosDbContext>(options =>
 
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
 builder.Services.AddScoped<EntryService>();
+
+var allowedOrigin = builder.Configuration["Cors:AllowedOrigin"] ?? "http://localhost:3000";
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+        policy.WithOrigins(allowedOrigin)
+            .AllowAnyHeader()
+            .AllowAnyMethod());
 });
+
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database")
+    .AddCheck<OutboxBacklogHealthCheck>("outbox");
 
 var enableWorkers = builder.Configuration.GetValue("Features:EnableBackgroundWorkers", true);
 if (enableWorkers)
@@ -65,18 +76,19 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.MapGet("/health", async (EntryService entries, CancellationToken ct) =>
+app.MapHealthChecks("/health", new HealthCheckOptions
 {
-    var pending = await entries.CountPendingOutboxAsync(ct);
-    return Results.Ok(new HealthResponse("Healthy", pending));
+    ResponseWriter = WriteLancamentosHealthAsync
 });
 
 app.MapPost("/entries", async (CreateEntryRequest request, EntryService entries, CancellationToken ct) =>
 {
     try
     {
-        var created = await entries.CreateAsync(request, ct);
-        return Results.Created($"/entries/{created.Id}", created);
+        var (entry, created) = await entries.CreateAsync(request, ct);
+        return created
+            ? Results.Created($"/entries/{entry.Id}", entry)
+            : Results.Ok(entry);
     }
     catch (ArgumentException ex)
     {
@@ -94,6 +106,10 @@ app.MapGet("/admin/outbox", async (LancamentosDbContext db, CancellationToken ct
 {
     var items = await db.OutboxMessages
         .AsNoTracking()
+        .Take(200)
+        .ToListAsync(ct);
+
+    return Results.Ok(items
         .OrderByDescending(m => m.CreatedAt)
         .Take(100)
         .Select(m => new
@@ -103,42 +119,60 @@ app.MapGet("/admin/outbox", async (LancamentosDbContext db, CancellationToken ct
             m.CreatedAt,
             m.ProcessedAt,
             Status = m.ProcessedAt == null ? "Pending" : "Published"
-        })
-        .ToListAsync(ct);
-
-    return Results.Ok(items);
+        }));
 });
 
 app.MapGet("/admin/snapshot", async (LancamentosDbContext db, CancellationToken ct) =>
 {
-    var entries = await db.Entries.AsNoTracking().OrderByDescending(e => e.CreatedAt).Take(100).ToListAsync(ct);
-    var outbox = await db.OutboxMessages.AsNoTracking().OrderByDescending(m => m.CreatedAt).Take(100).ToListAsync(ct);
+    var entries = await db.Entries.AsNoTracking().Take(200).ToListAsync(ct);
+    var outbox = await db.OutboxMessages.AsNoTracking().Take(200).ToListAsync(ct);
 
     return Results.Ok(new
     {
         database = "lancamentos_db",
-        entries = entries.Select(e => new
-        {
-            e.Id,
-            Type = ((EntryType)e.Type).ToString(),
-            e.Amount,
-            e.Date,
-            e.Description,
-            e.CreatedAt
-        }),
-        outbox = outbox.Select(m => new
-        {
-            m.Id,
-            m.Payload,
-            m.CreatedAt,
-            m.ProcessedAt,
-            Status = m.ProcessedAt == null ? "Pending" : "Published"
-        }),
+        entries = entries
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(100)
+            .Select(e => new
+            {
+                e.Id,
+                e.ExternalId,
+                Type = ((EntryType)e.Type).ToString(),
+                e.Amount,
+                e.Date,
+                e.Description,
+                e.CreatedAt
+            }),
+        outbox = outbox
+            .OrderByDescending(m => m.CreatedAt)
+            .Take(100)
+            .Select(m => new
+            {
+                m.Id,
+                m.Payload,
+                m.CreatedAt,
+                m.ProcessedAt,
+                Status = m.ProcessedAt == null ? "Pending" : "Published"
+            }),
         pendingOutbox = outbox.Count(m => m.ProcessedAt == null)
     });
 });
 
 app.Run();
+
+static async Task WriteLancamentosHealthAsync(HttpContext context, HealthReport report)
+{
+    var pending = 0;
+    if (report.Entries.TryGetValue("outbox", out var outbox)
+        && outbox.Data.TryGetValue("pending", out var pendingValue)
+        && pendingValue is int pendingInt)
+    {
+        pending = pendingInt;
+    }
+
+    context.Response.ContentType = "application/json";
+    await context.Response.WriteAsJsonAsync(new HealthResponse(report.Status.ToString(), pending));
+}
 
 static bool IsSqliteConnection(string cs) =>
     cs.Contains("Data Source=", StringComparison.OrdinalIgnoreCase);

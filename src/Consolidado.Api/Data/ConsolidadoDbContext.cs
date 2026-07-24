@@ -13,6 +13,7 @@ public sealed class ConsolidadoDbContext(DbContextOptions<ConsolidadoDbContext> 
         modelBuilder.Entity<ProcessedEventEntity>(entity =>
         {
             entity.ToTable("processed_events");
+            // Primary key enforces UNIQUE(event_id) for consumer idempotency.
             entity.HasKey(e => e.EventId);
         });
 

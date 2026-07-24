@@ -9,9 +9,17 @@ public sealed class EntryService(LancamentosDbContext db)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<EntryResponse> CreateAsync(CreateEntryRequest request, CancellationToken ct)
+    public async Task<(EntryResponse Entry, bool Created)> CreateAsync(
+        CreateEntryRequest request,
+        CancellationToken ct)
     {
         Validate(request);
+
+        var existing = await db.Entries.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.ExternalId == request.ExternalId, ct);
+
+        if (existing is not null)
+            return (ToResponse(existing), Created: false);
 
         var entryId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
@@ -20,6 +28,7 @@ public sealed class EntryService(LancamentosDbContext db)
         var entry = new EntryEntity
         {
             Id = entryId,
+            ExternalId = request.ExternalId,
             Type = (int)request.Type,
             Amount = request.Amount,
             Date = request.Date,
@@ -44,9 +53,24 @@ public sealed class EntryService(LancamentosDbContext db)
 
         db.Entries.Add(entry);
         db.OutboxMessages.Add(outbox);
-        await db.SaveChangesAsync(ct);
 
-        return ToResponse(entry);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return (ToResponse(entry), Created: true);
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+
+            var raced = await db.Entries.AsNoTracking()
+                .FirstOrDefaultAsync(e => e.ExternalId == request.ExternalId, ct);
+
+            if (raced is not null)
+                return (ToResponse(raced), Created: false);
+
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<EntryResponse>> ListAsync(DateOnly? date, CancellationToken ct)
@@ -56,11 +80,11 @@ public sealed class EntryService(LancamentosDbContext db)
         if (date is not null)
             query = query.Where(e => e.Date == date);
 
-        var items = await query
+        var items = await query.ToListAsync(ct);
+        return items
             .OrderByDescending(e => e.CreatedAt)
-            .ToListAsync(ct);
-
-        return items.Select(ToResponse).ToList();
+            .Select(ToResponse)
+            .ToList();
     }
 
     public Task<int> CountPendingOutboxAsync(CancellationToken ct) =>
@@ -68,6 +92,9 @@ public sealed class EntryService(LancamentosDbContext db)
 
     private static void Validate(CreateEntryRequest request)
     {
+        if (request.ExternalId == Guid.Empty)
+            throw new ArgumentException("ExternalId is required.");
+
         if (request.Amount <= 0)
             throw new ArgumentException("Amount must be greater than zero.");
 
@@ -78,6 +105,7 @@ public sealed class EntryService(LancamentosDbContext db)
     private static EntryResponse ToResponse(EntryEntity entry) =>
         new(
             entry.Id,
+            entry.ExternalId,
             (EntryType)entry.Type,
             entry.Amount,
             entry.Date,

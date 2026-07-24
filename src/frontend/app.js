@@ -163,6 +163,7 @@ els.entryForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(els.entryForm);
   const payload = {
+    externalId: crypto.randomUUID(),
     type: data.get("type"),
     amount: Number(data.get("amount")),
     date: data.get("date"),

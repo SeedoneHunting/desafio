@@ -1,6 +1,7 @@
 ﻿extern alias ConsolidadoApi;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Cashflow.Contracts;
 using ConsolidadoApi::Consolidado.Api.Data;
 using ConsolidadoApi::Consolidado.Api.Services;
@@ -9,11 +10,17 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cashflow.Tests;
 
 public class IntegrationTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     [Fact]
     public async Task EntryOutbox_ProjectsToConsolidatedBalance()
     {
@@ -31,9 +38,9 @@ public class IntegrationTests
         var lancamentosClient = lancamentosFactory.CreateClient();
 
         await lancamentosClient.PostAsJsonAsync("/entries", new CreateEntryRequest(
-            EntryType.Credit, 100m, date, "Venda"));
+            Guid.NewGuid(), EntryType.Credit, 100m, date, "Venda"), JsonOptions);
         await lancamentosClient.PostAsJsonAsync("/entries", new CreateEntryRequest(
-            EntryType.Debit, 25.50m, date, "Fornecedor"));
+            Guid.NewGuid(), EntryType.Debit, 25.50m, date, "Fornecedor"), JsonOptions);
 
         await using (var scope = lancamentosFactory.Services.CreateAsyncScope())
         {
@@ -50,13 +57,12 @@ public class IntegrationTests
 
             var projection = new BalanceProjectionService(
                 consolidadoDb,
-                new MemoryCache(new MemoryCacheOptions()));
-
-            var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+                new MemoryCache(new MemoryCacheOptions()),
+                NullLogger<BalanceProjectionService>.Instance);
 
             foreach (var message in messages)
             {
-                var domainEvent = JsonSerializer.Deserialize<EntryCreatedEvent>(message.Payload, jsonOptions);
+                var domainEvent = JsonSerializer.Deserialize<EntryCreatedEvent>(message.Payload, JsonOptions);
                 Assert.NotNull(domainEvent);
                 await projection.ProcessEventAsync(domainEvent, CancellationToken.None);
             }

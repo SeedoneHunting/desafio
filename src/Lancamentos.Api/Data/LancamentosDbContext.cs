@@ -1,4 +1,3 @@
-using Lancamentos.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lancamentos.Api.Data;
@@ -17,6 +16,7 @@ public sealed class LancamentosDbContext(DbContextOptions<LancamentosDbContext> 
             entity.Property(e => e.Amount).HasPrecision(18, 2);
             entity.Property(e => e.Description).HasMaxLength(500);
             entity.HasIndex(e => e.Date);
+            entity.HasIndex(e => e.ExternalId).IsUnique();
         });
 
         modelBuilder.Entity<OutboxMessageEntity>(entity =>

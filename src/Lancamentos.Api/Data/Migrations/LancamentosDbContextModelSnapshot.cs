@@ -43,12 +43,18 @@ namespace Lancamentos.Api.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<Guid>("ExternalId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Type")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Date");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique();
 
                     b.ToTable("entries", (string)null);
                 });

@@ -1,11 +1,14 @@
 ﻿using System.Threading.RateLimiting;
 using Cashflow.Contracts;
 using Consolidado.Api.Data;
+using Consolidado.Api.Health;
 using Consolidado.Api.Middleware;
 using Consolidado.Api.Services;
 using Consolidado.Api.Workers;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 using System.Text.Json.Serialization;
 
@@ -36,15 +39,32 @@ builder.Services.AddDbContext<ConsolidadoDbContext>(options =>
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<BalanceProjectionService>();
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+
+var allowedOrigin = builder.Configuration["Cors:AllowedOrigin"] ?? "http://localhost:3000";
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+        policy.WithOrigins(allowedOrigin)
+            .AllowAnyHeader()
+            .AllowAnyMethod());
 });
 
 var enableWorkers = builder.Configuration.GetValue("Features:EnableBackgroundWorkers", true);
 if (enableWorkers)
-    builder.Services.AddHostedService<KafkaConsumerWorker>();
+{
+    builder.Services.AddSingleton<KafkaConsumerWorker>();
+    builder.Services.AddHostedService(provider => provider.GetRequiredService<KafkaConsumerWorker>());
+    builder.Services.AddHealthChecks()
+        .AddCheck<DatabaseHealthCheck>("database")
+        .AddCheck<KafkaConsumerHealthCheck>("kafka-consumer");
+}
+else
+{
+    // Tests disable the worker — register a stub so health DI still resolves if needed.
+    builder.Services.AddSingleton<KafkaConsumerWorker>();
+    builder.Services.AddHealthChecks()
+        .AddCheck<DatabaseHealthCheck>("database");
+}
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -77,7 +97,10 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.MapGet("/health", () => Results.Ok(new HealthResponse("Healthy", 0)));
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = WriteConsolidadoHealthAsync
+});
 
 app.MapGet("/balances/{entryDate}", async (
     DateOnly entryDate,
@@ -100,29 +123,30 @@ app.MapGet("/balances", async (
 
 app.MapGet("/admin/processed-events", async (ConsolidadoDbContext db, CancellationToken ct) =>
 {
-    var items = await db.ProcessedEvents
-        .AsNoTracking()
-        .OrderByDescending(e => e.ProcessedAt)
-        .Take(100)
-        .ToListAsync(ct);
-
-    return Results.Ok(items);
+    var items = await db.ProcessedEvents.AsNoTracking().Take(200).ToListAsync(ct);
+    return Results.Ok(items.OrderByDescending(e => e.ProcessedAt).Take(100));
 });
 
 app.MapGet("/admin/snapshot", async (ConsolidadoDbContext db, CancellationToken ct) =>
 {
-    var balances = await db.DailyBalances.AsNoTracking().OrderByDescending(b => b.Date).Take(100).ToListAsync(ct);
-    var events = await db.ProcessedEvents.AsNoTracking().OrderByDescending(e => e.ProcessedAt).Take(100).ToListAsync(ct);
+    var balances = await db.DailyBalances.AsNoTracking().Take(200).ToListAsync(ct);
+    var events = await db.ProcessedEvents.AsNoTracking().Take(200).ToListAsync(ct);
 
     return Results.Ok(new
     {
         database = "consolidado_db",
-        dailyBalances = balances,
-        processedEvents = events
+        dailyBalances = balances.OrderByDescending(b => b.Date).Take(100),
+        processedEvents = events.OrderByDescending(e => e.ProcessedAt).Take(100)
     });
 });
 
 app.Run();
+
+static async Task WriteConsolidadoHealthAsync(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json";
+    await context.Response.WriteAsJsonAsync(new HealthResponse(report.Status.ToString(), 0));
+}
 
 static bool IsSqliteConnection(string cs) =>
     cs.Contains("Data Source=", StringComparison.OrdinalIgnoreCase);
