@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: cashflow
-      POSTGRES_PASSWORD: cashflow
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cashflow"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -45,12 +45,12 @@ services:
     ports:
       - "5002:8080"
     environment:
-      ConnectionStrings__ConsolidadoDb: Host=postgres;Port=5432;Database=consolidado_db;Username=cashflow;Password=cashflow
-      Kafka__BootstrapServers: kafka:9092
-      Kafka__Topic: cashflow.entries
-      Kafka__DlqTopic: cashflow.entries.dlq
-      Kafka__ConsumerGroup: consolidado-service
-      Cors__AllowedOrigin: http://localhost:3000
+      ConnectionStrings__ConsolidadoDb: Host=postgres;Port=5432;Database=${POSTGRES_DB_CONSOLIDADO};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS}
+      Kafka__Topic: ${KAFKA_TOPIC}
+      Kafka__DlqTopic: ${KAFKA_DLQ_TOPIC}
+      Kafka__ConsumerGroup: ${KAFKA_CONSUMER_GROUP}
+      Cors__AllowedOrigin: ${CORS_ALLOWED_ORIGIN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,11 +64,11 @@ services:
     ports:
       - "5001:8080"
     environment:
-      ConnectionStrings__LancamentosDb: Host=postgres;Port=5432;Database=lancamentos_db;Username=cashflow;Password=cashflow
-      Kafka__BootstrapServers: kafka:9092
-      Kafka__Topic: cashflow.entries
+      ConnectionStrings__LancamentosDb: Host=postgres;Port=5432;Database=${POSTGRES_DB_LANCAMENTOS};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS}
+      Kafka__Topic: ${KAFKA_TOPIC}
       Outbox__PollIntervalSeconds: 2
-      Cors__AllowedOrigin: http://localhost:3000
+      Cors__AllowedOrigin: ${CORS_ALLOWED_ORIGIN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,8 +90,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      KAFKA_CLUSTERS_0_NAME: cashflow
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
     depends_on:
       kafka:
         condition: service_healthy

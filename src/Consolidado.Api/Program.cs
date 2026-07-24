@@ -25,8 +25,10 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .Enrich.FromLogContext()
     .WriteTo.Console());
 
-var connectionString = builder.Configuration.GetConnectionString("ConsolidadoDb")
-    ?? "Host=localhost;Port=5432;Database=consolidado_db;Username=cashflow;Password=cashflow";
+var connectionString = builder.Configuration.GetConnectionString("ConsolidadoDb");
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException(
+        "Connection string 'ConsolidadoDb' is not configured. Set ConnectionStrings__ConsolidadoDb or use Docker Compose with a local .env file.");
 
 builder.Services.AddDbContext<ConsolidadoDbContext>(options =>
 {

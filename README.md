@@ -17,10 +17,20 @@ Solução para o desafio de **Arquiteto de Soluções**: dois serviços .NET des
 - [.NET 9 SDK](https://dotnet.microsoft.com/download)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
+## Segredos / credenciais
+
+Credenciais **não** ficam no código nem no `docker-compose.yml`.
+
+1. Copie o exemplo: `Copy-Item .env.example .env`
+2. Ajuste usuário/senha no `.env` (arquivo gitignored)
+3. Suba com `.\scripts\start.ps1` (cria `.env` automaticamente se ainda não existir)
+
+Nunca faça commit de `.env`.
+
 ## Executar localmente (recomendado)
 
 ```powershell
-# 1. Subir stack completa
+# 1. Subir stack completa (usa .env local)
 .\scripts\start.ps1
 
 # 2. Abrir o painel
@@ -39,7 +49,7 @@ start http://localhost:3000
 |-----|-----|
 | http://localhost:3000 | Painel (criar lançamento, ver saldo/outbox) |
 | http://localhost:8080 | Kafka UI → tópico `cashflow.entries` |
-| http://localhost:8081 | Adminer → Postgres (`cashflow`/`cashflow`) |
+| http://localhost:8081 | Adminer → Postgres (`server=postgres`, user/senha do seu `.env`) |
 
 ## Executar testes
 

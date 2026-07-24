@@ -8,7 +8,14 @@ public sealed class ConsolidadoDbContextFactory : IDesignTimeDbContextFactory<Co
     public ConsolidadoDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("CONSOLIDADO_DB")
-            ?? "Host=localhost;Port=5432;Database=consolidado_db;Username=cashflow;Password=cashflow";
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__ConsolidadoDb");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Set CONSOLIDADO_DB (or ConnectionStrings__ConsolidadoDb) for design-time migrations. Do not hardcode credentials.");
+        }
+
         var options = new DbContextOptionsBuilder<ConsolidadoDbContext>()
             .UseNpgsql(connectionString)
             .Options;

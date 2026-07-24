@@ -23,8 +23,10 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .Enrich.FromLogContext()
     .WriteTo.Console());
 
-var connectionString = builder.Configuration.GetConnectionString("LancamentosDb")
-    ?? "Host=localhost;Port=5432;Database=lancamentos_db;Username=cashflow;Password=cashflow";
+var connectionString = builder.Configuration.GetConnectionString("LancamentosDb");
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException(
+        "Connection string 'LancamentosDb' is not configured. Set ConnectionStrings__LancamentosDb or use Docker Compose with a local .env file.");
 
 builder.Services.AddDbContext<LancamentosDbContext>(options =>
 {

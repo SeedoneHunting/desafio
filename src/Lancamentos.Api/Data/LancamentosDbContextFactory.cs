@@ -8,7 +8,14 @@ public sealed class LancamentosDbContextFactory : IDesignTimeDbContextFactory<La
     public LancamentosDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("LANCAMENTOS_DB")
-            ?? "Host=localhost;Port=5432;Database=lancamentos_db;Username=cashflow;Password=cashflow";
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__LancamentosDb");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Set LANCAMENTOS_DB (or ConnectionStrings__LancamentosDb) for design-time migrations. Do not hardcode credentials.");
+        }
+
         var options = new DbContextOptionsBuilder<LancamentosDbContext>()
             .UseNpgsql(connectionString)
             .Options;
