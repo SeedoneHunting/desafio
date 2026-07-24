@@ -1,14 +1,20 @@
 param(
     [int]$Requests = 100,
     [int]$Concurrency = 50,
-    [string]$Url = "http://localhost:5002/balances/2026-01-25"
+    [string]$Url = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($Url)) {
+    $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
+    $Url = "http://localhost:5002/balances/$date"
+}
+
 $jobs = @()
 $batchSize = [Math]::Ceiling($Requests / $Concurrency)
 
 Write-Host "Load test: $Requests requests, concurrency $Concurrency" -ForegroundColor Cyan
+Write-Host "URL: $Url"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 for ($batch = 0; $batch -lt $Concurrency; $batch++) {

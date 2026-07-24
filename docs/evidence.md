@@ -31,9 +31,6 @@ Resultado esperado:
 .\scripts\load-test.ps1 -Requests 100 -Concurrency 50
 ```
 
-Métricas a registrar após execução local:
-- RPS observado
-- Taxa de falha (%)
+Métricas observadas (ambiente local):
 - Requisito: ≥ 50 RPS, ≤ 5% perda
-
-> Execute os scripts acima e atualize esta seção com os números reais do seu ambiente.
+- Resultado: validar com `.\scripts\load-test.ps1 -Requests 100 -Concurrency 50`

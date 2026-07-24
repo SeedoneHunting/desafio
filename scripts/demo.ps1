@@ -1,7 +1,8 @@
 $ErrorActionPreference = "Stop"
-$date = "2026-01-25"
+$date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
 
 Write-Host "=== Demo Fluxo de Caixa ===" -ForegroundColor Cyan
+Write-Host "Data do lancamento: $date"
 
 Write-Host "`n[1] Registrar credito R$ 100,00" -ForegroundColor Yellow
 Invoke-RestMethod -Method Post -Uri "http://localhost:5001/entries" -ContentType "application/json" -Body (@{

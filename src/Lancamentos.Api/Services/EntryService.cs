@@ -100,6 +100,16 @@ public sealed class EntryService(LancamentosDbContext db)
 
         if (string.IsNullOrWhiteSpace(request.Description))
             throw new ArgumentException("Description is required.");
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var minDate = today.AddDays(-90);
+        var maxDate = today.AddDays(90);
+
+        if (request.Date < minDate)
+            throw new ArgumentException($"Date cannot be more than 90 days in the past (min {minDate:yyyy-MM-dd}).");
+
+        if (request.Date > maxDate)
+            throw new ArgumentException($"Date cannot be more than 90 days in the future (max {maxDate:yyyy-MM-dd}).");
     }
 
     private static EntryResponse ToResponse(EntryEntity entry) =>

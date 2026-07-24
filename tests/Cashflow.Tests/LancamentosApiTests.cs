@@ -91,6 +91,42 @@ public class LancamentosApiTests : IClassFixture<WebApplicationFactory<Program>>
         var response = await _client.PostAsJsonAsync("/entries", request, JsonOptions);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("greater than zero", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateEntry_ReturnsBadRequest_WhenDateTooFarInPast()
+    {
+        var request = new CreateEntryRequest(
+            Guid.NewGuid(),
+            EntryType.Credit,
+            10m,
+            DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-91),
+            "Old");
+
+        var response = await _client.PostAsJsonAsync("/entries", request, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("90 days", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateEntry_ReturnsBadRequest_WhenDateTooFarInFuture()
+    {
+        var request = new CreateEntryRequest(
+            Guid.NewGuid(),
+            EntryType.Credit,
+            10m,
+            DateOnly.FromDateTime(DateTime.UtcNow).AddDays(91),
+            "Future");
+
+        var response = await _client.PostAsJsonAsync("/entries", request, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("90 days", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -26,7 +26,7 @@ public class IntegrationTests
     {
         var lancamentosDbPath = Path.GetTempFileName();
         var consolidadoDbPath = Path.GetTempFileName();
-        var date = new DateOnly(2026, 1, 25);
+        var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
         await using var lancamentosFactory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
