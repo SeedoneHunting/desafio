@@ -74,5 +74,36 @@ services:
       lancamentos-api:
         condition: service_started
 
+  frontend:
+    build:
+      context: .
+      dockerfile: src/frontend/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - lancamentos-api
+      - consolidado-api
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: cashflow
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  adminer:
+    image: adminer:4
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:

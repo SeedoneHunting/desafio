@@ -1,11 +1,18 @@
 ﻿using Cashflow.Contracts;
 using Microsoft.AspNetCore.Mvc.Testing;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Cashflow.Tests;
 
 public class LancamentosApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     private readonly HttpClient _client;
 
     public LancamentosApiTests(WebApplicationFactory<Program> factory)
@@ -26,10 +33,10 @@ public class LancamentosApiTests : IClassFixture<WebApplicationFactory<Program>>
             DateOnly.FromDateTime(DateTime.UtcNow),
             "Venda");
 
-        var response = await _client.PostAsJsonAsync("/entries", request);
+        var response = await _client.PostAsJsonAsync("/entries", request, JsonOptions);
 
         response.EnsureSuccessStatusCode();
-        var body = await response.Content.ReadFromJsonAsync<EntryResponse>();
+        var body = await response.Content.ReadFromJsonAsync<EntryResponse>(JsonOptions);
         Assert.NotNull(body);
         Assert.Equal(100m, body.Amount);
     }

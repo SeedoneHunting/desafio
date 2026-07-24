@@ -9,8 +9,11 @@ Start-Sleep -Seconds 15
 
 Write-Host ""
 Write-Host "Servicos disponiveis:" -ForegroundColor Green
+Write-Host "  Frontend:    http://localhost:3000"
 Write-Host "  Lancamentos: http://localhost:5001"
 Write-Host "  Consolidado: http://localhost:5002"
+Write-Host "  Kafka UI:    http://localhost:8080"
+Write-Host "  Adminer:     http://localhost:8081  (user/pass: cashflow/cashflow, server: postgres)"
 Write-Host ""
 Write-Host "Health:" -ForegroundColor Green
 Invoke-RestMethod http://localhost:5001/health | ConvertTo-Json

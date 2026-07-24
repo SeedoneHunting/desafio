@@ -4,10 +4,13 @@ Solução para o desafio de **Arquiteto de Soluções**: dois serviços .NET des
 
 ## Arquitetura
 
+- **Frontend** (porta 3000): painel para lançamentos, saldos, outbox e eventos
 - **Lancamentos.Api** (porta 5001): registra débitos/créditos, persiste outbox transacional
 - **Consolidado.Api** (porta 5002): consome Kafka, projeta saldo diário, cache na leitura
 - **PostgreSQL**: `lancamentos_db` + `consolidado_db`
 - **Kafka**: tópico `cashflow.entries`
+- **Kafka UI** (porta 8080): inspecionar mensagens do tópico
+- **Adminer** (porta 8081): inspecionar tabelas nos bancos
 
 ## Pré-requisitos
 
@@ -20,12 +23,23 @@ Solução para o desafio de **Arquiteto de Soluções**: dois serviços .NET des
 # 1. Subir stack completa
 .\scripts\start.ps1
 
-# 2. Demonstração ponta a ponta (saldo esperado: R$ 74,50)
+# 2. Abrir o painel
+start http://localhost:3000
+
+# 3. Demonstração ponta a ponta (saldo esperado: R$ 74,50)
 .\scripts\demo.ps1
 
-# 3. Teste de carga (50 req concorrentes)
+# 4. Teste de carga (50 req concorrentes)
 .\scripts\load-test.ps1
 ```
+
+### Interfaces úteis
+
+| URL | Uso |
+|-----|-----|
+| http://localhost:3000 | Painel (criar lançamento, ver saldo/outbox) |
+| http://localhost:8080 | Kafka UI → tópico `cashflow.entries` |
+| http://localhost:8081 | Adminer → Postgres (`cashflow`/`cashflow`) |
 
 ## Executar testes
 

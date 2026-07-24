@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cashflow — Painel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="top">
+    <div>
+      <p class="brand">Cashflow</p>
+      <h1>Painel operacional</h1>
+      <p class="lead">Lançamentos, saldo consolidado, outbox, Kafka e bancos — tudo em um lugar para a demo.</p>
+    </div>
+    <div class="links">
+      <a href="http://localhost:8080" target="_blank" rel="noreferrer">Kafka UI</a>
+      <a href="http://localhost:8081" target="_blank" rel="noreferrer">Adminer (DB)</a>
+      <button id="btnRefresh" type="button">Atualizar</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel health">
+      <h2>Status</h2>
+      <div class="health-grid" id="healthGrid">
+        <div class="pill">Carregando...</div>
+      </div>
+    </section>
+
+    <section class="panel form-panel">
+      <h2>Novo lançamento</h2>
+      <form id="entryForm">
+        <label>
+          Tipo
+          <select name="type" required>
+            <option value="Credit">Credit</option>
+            <option value="Debit">Debit</option>
+          </select>
+        </label>
+        <label>
+          Valor
+          <input name="amount" type="number" step="0.01" min="0.01" value="100.00" required />
+        </label>
+        <label>
+          Data
+          <input name="date" type="date" required />
+        </label>
+        <label class="grow">
+          Descrição
+          <input name="description" type="text" maxlength="500" value="Venda no caixa" required />
+        </label>
+        <button type="submit">Registrar</button>
+      </form>
+      <p id="formMsg" class="msg" hidden></p>
+    </section>
+
+    <section class="grid-2">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Lançamentos</h2>
+          <span class="hint">API :5001 /entries</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Valor</th>
+                <th>Data</th>
+                <th>Descrição</th>
+              </tr>
+            </thead>
+            <tbody id="entriesBody"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Saldos consolidados</h2>
+          <span class="hint">API :5002 /balances</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Créditos</th>
+                <th>Débitos</th>
+                <th>Saldo</th>
+              </tr>
+            </thead>
+            <tbody id="balancesBody"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid-2">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Outbox (lancamentos_db)</h2>
+          <span class="hint">Eventos aguardando / publicados no Kafka</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Criado</th>
+                <th>Payload</th>
+              </tr>
+            </thead>
+            <tbody id="outboxBody"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Eventos processados (consolidado_db)</h2>
+          <span class="hint">Idempotência por EventId</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>EventId</th>
+                <th>Processado em</th>
+              </tr>
+            </thead>
+            <tbody id="eventsBody"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel ops">
+      <h2>Como inspecionar Kafka e Postgres</h2>
+      <div class="ops-grid">
+        <div>
+          <h3>Kafka UI</h3>
+          <p>Abra <a href="http://localhost:8080" target="_blank" rel="noreferrer">localhost:8080</a>, tópico <code>cashflow.entries</code>, aba Messages.</p>
+        </div>
+        <div>
+          <h3>Adminer</h3>
+          <p>Abra <a href="http://localhost:8081" target="_blank" rel="noreferrer">localhost:8081</a></p>
+          <ul>
+            <li>Sistema: PostgreSQL</li>
+            <li>Servidor: <code>postgres</code></li>
+            <li>Usuário / senha: <code>cashflow</code> / <code>cashflow</code></li>
+            <li>Bancos: <code>lancamentos_db</code> e <code>consolidado_db</code></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

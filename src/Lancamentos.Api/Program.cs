@@ -5,8 +5,14 @@ using Lancamentos.Api.Middleware;
 using Lancamentos.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
@@ -27,6 +33,11 @@ builder.Services.AddDbContext<LancamentosDbContext>(options =>
 
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
 builder.Services.AddScoped<EntryService>();
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+});
 
 var enableWorkers = builder.Configuration.GetValue("Features:EnableBackgroundWorkers", true);
 if (enableWorkers)
@@ -37,6 +48,7 @@ if (enableWorkers)
 
 var app = builder.Build();
 
+app.UseCors();
 app.UseMiddleware<CorrelationIdMiddleware>();
 
 using (var scope = app.Services.CreateScope())
@@ -76,6 +88,54 @@ app.MapGet("/entries", async (DateOnly? entry_date, EntryService entries, Cancel
 {
     var items = await entries.ListAsync(entry_date, ct);
     return Results.Ok(items);
+});
+
+app.MapGet("/admin/outbox", async (LancamentosDbContext db, CancellationToken ct) =>
+{
+    var items = await db.OutboxMessages
+        .AsNoTracking()
+        .OrderByDescending(m => m.CreatedAt)
+        .Take(100)
+        .Select(m => new
+        {
+            m.Id,
+            m.Payload,
+            m.CreatedAt,
+            m.ProcessedAt,
+            Status = m.ProcessedAt == null ? "Pending" : "Published"
+        })
+        .ToListAsync(ct);
+
+    return Results.Ok(items);
+});
+
+app.MapGet("/admin/snapshot", async (LancamentosDbContext db, CancellationToken ct) =>
+{
+    var entries = await db.Entries.AsNoTracking().OrderByDescending(e => e.CreatedAt).Take(100).ToListAsync(ct);
+    var outbox = await db.OutboxMessages.AsNoTracking().OrderByDescending(m => m.CreatedAt).Take(100).ToListAsync(ct);
+
+    return Results.Ok(new
+    {
+        database = "lancamentos_db",
+        entries = entries.Select(e => new
+        {
+            e.Id,
+            Type = ((EntryType)e.Type).ToString(),
+            e.Amount,
+            e.Date,
+            e.Description,
+            e.CreatedAt
+        }),
+        outbox = outbox.Select(m => new
+        {
+            m.Id,
+            m.Payload,
+            m.CreatedAt,
+            m.ProcessedAt,
+            Status = m.ProcessedAt == null ? "Pending" : "Published"
+        }),
+        pendingOutbox = outbox.Count(m => m.ProcessedAt == null)
+    });
 });
 
 app.Run();

@@ -7,8 +7,14 @@ using Consolidado.Api.Workers;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
@@ -30,6 +36,11 @@ builder.Services.AddDbContext<ConsolidadoDbContext>(options =>
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<BalanceProjectionService>();
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+});
 
 var enableWorkers = builder.Configuration.GetValue("Features:EnableBackgroundWorkers", true);
 if (enableWorkers)
@@ -48,6 +59,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+app.UseCors();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseRateLimiter();
 
@@ -85,6 +97,30 @@ app.MapGet("/balances", async (
     var items = await projection.ListAsync(start_date, end_date, ct);
     return Results.Ok(items);
 }).RequireRateLimiting("balances");
+
+app.MapGet("/admin/processed-events", async (ConsolidadoDbContext db, CancellationToken ct) =>
+{
+    var items = await db.ProcessedEvents
+        .AsNoTracking()
+        .OrderByDescending(e => e.ProcessedAt)
+        .Take(100)
+        .ToListAsync(ct);
+
+    return Results.Ok(items);
+});
+
+app.MapGet("/admin/snapshot", async (ConsolidadoDbContext db, CancellationToken ct) =>
+{
+    var balances = await db.DailyBalances.AsNoTracking().OrderByDescending(b => b.Date).Take(100).ToListAsync(ct);
+    var events = await db.ProcessedEvents.AsNoTracking().OrderByDescending(e => e.ProcessedAt).Take(100).ToListAsync(ct);
+
+    return Results.Ok(new
+    {
+        database = "consolidado_db",
+        dailyBalances = balances,
+        processedEvents = events
+    });
+});
 
 app.Run();
 

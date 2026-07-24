@@ -15,23 +15,27 @@ public sealed class KafkaConsumerWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
+
         var kafka = kafkaOptions.Value;
         var config = new ConsumerConfig
         {
             BootstrapServers = kafka.BootstrapServers,
             GroupId = kafka.ConsumerGroup,
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = false
+            EnableAutoCommit = false,
+            AllowAutoCreateTopics = true
         };
 
         using var consumer = new ConsumerBuilder<string, string>(config).Build();
         consumer.Subscribe(kafka.Topic);
+        logger.LogInformation("Kafka consumer subscribed to {Topic}.", kafka.Topic);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var result = consumer.Consume(stoppingToken);
+                var result = consumer.Consume(TimeSpan.FromSeconds(1));
                 if (result?.Message?.Value is null)
                     continue;
 
@@ -47,9 +51,15 @@ public sealed class KafkaConsumerWorker(
                 await projection.ProcessEventAsync(domainEvent, stoppingToken);
                 consumer.Commit(result);
             }
+            catch (ConsumeException ex) when (ex.Error.Code == ErrorCode.UnknownTopicOrPart)
+            {
+                logger.LogWarning("Topic {Topic} not ready yet, retrying...", kafka.Topic);
+                await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+            }
             catch (ConsumeException ex)
             {
                 logger.LogWarning(ex, "Kafka consume error.");
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
